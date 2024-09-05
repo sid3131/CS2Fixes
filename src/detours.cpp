@@ -436,15 +436,48 @@ void* FASTCALL Detour_CNavMesh_GetNearestNavArea(int64_t unk1, float* unk2, unsi
 
 	return CNavMesh_GetNearestNavArea(unk1, unk2, unk3, unk4, unk5, unk6, unk7, unk8);
 }
+static bool g_bDisableSubtick = false;
+FAKE_BOOL_CVAR(s_subtick, "Whether to disable subtick", g_bDisableSubtick, false, false)
 
-void FASTCALL Detour_ProcessMovement(CCSPlayer_MovementServices *pThis, void *pMove)
+void FASTCALL Detour_ProcessMovement(CCSPlayer_MovementServices* pThis, void* pMove)
 {
+	if (g_bDisableSubtick) {
+		CMoveData* pmove = reinterpret_cast<CMoveData*>(pMove);
+		auto subtick_moves = pmove->m_SubtickMoves.Count();
+		auto attack_moves = pmove->m_AttackSubtickMoves.Count();
+		auto is_bhop_subtick = false;
+		if (pmove->m_bHasSubtickInputs) {
+
+
+				for (auto i = 0; i < subtick_moves; i++)
+				{
+					auto move = pmove->m_SubtickMoves[i];
+					auto subtick_moves = pmove->m_SubtickMoves.Count();
+
+					// legit players shouldnt send over 4 of these in a single command. cheats send ~4 for normal autostrafer, ~12 for subtick strafer
+					// attack_moves is always 0 when doing the strafe shit
+					if (pmove->m_SubtickMoves.Count() > 4 && attack_moves == 0) {
+
+						pmove->m_bHasSubtickInputs = false;
+						pmove->m_flSubtickFraction = 1;
+						pmove->m_SubtickMoves.RemoveAll();
+						pmove->m_SubtickMoves.AddToTail({ 1.0f, 0, false });
+					}
+
+
+				}
+
+
+		
+		}
+	}
 	CCSPlayerPawn *pPawn = pThis->GetPawn();
 
 	if (!pPawn->IsAlive())
 		return ProcessMovement(pThis, pMove);
 
 	CCSPlayerController *pController = pPawn->GetOriginalController();
+
 
 	if (!pController || !pController->IsConnected())
 		return ProcessMovement(pThis, pMove);
@@ -466,8 +499,11 @@ void FASTCALL Detour_ProcessMovement(CCSPlayer_MovementServices *pThis, void *pM
 	gpGlobals->frametime = flStoreFrametime;
 }
 
-static bool g_bDisableSubtick = false;
-FAKE_BOOL_CVAR(cs2f_disable_subtick_move, "Whether to disable subtick movement", g_bDisableSubtick, false, false)
+
+static bool g_bDisable_Doubletap = false;
+FAKE_BOOL_CVAR(s_dt, "Whether to disable double-tap", g_bDisable_Doubletap, false, false)
+
+
 
 class CUserCmd
 {
@@ -480,16 +516,54 @@ public:
 #endif
 };
 
+
 void* FASTCALL Detour_ProcessUsercmds(CCSPlayerController *pController, CUserCmd *cmds, int numcmds, bool paused, float margin)
 {
+	// assuming the majority of you dont want the push fix, fix this yourself if you want it. 
 	// Push fix only works properly if subtick movement is also disabled
-	if (!g_bDisableSubtick && !g_bUseOldPush)
-		return ProcessUsercmds(pController, cmds, numcmds, paused, margin);
+//	if (!g_bDisableSubtick && !g_bUseOldPush)
+	//	return ProcessUsercmds(pController, cmds, numcmds, paused, margin);
 
 	VPROF_SCOPE_BEGIN("Detour_ProcessUsercmds");
+	const auto pPawn = pController->GetPlayerPawn();
+	
+	if (g_bDisable_Doubletap) {
+		if (const auto pPawn = pController->GetPlayerPawn(); pPawn && pPawn->IsAlive()) {
+			CCSPlayer_WeaponServices* pWeaponServices = pPawn->m_pWeaponServices;
+			if (!pWeaponServices) 	return ProcessUsercmds(pController, cmds, numcmds, paused, margin);
+			// credits: Nuko (tysm for the help)
+			CUtlVector<CHandle<CBasePlayerWeapon>>* weapons = pWeaponServices->m_hMyWeapons();
+			FOR_EACH_VEC(*weapons, i) {
+				CBasePlayerWeapon* weapon = (*weapons)[i].Get();
+				if (!weapon) continue;
 
-	for (int i = 0; i < numcmds; i++)
-		cmds[i].cmd.mutable_base()->mutable_subtick_moves()->Clear();
+				if (auto* vdata = weapon->GetWeaponVData()) {
+					const auto nTickCount = gpGlobals->tickcount;
+					auto cycleTime = vdata->m_flCycleTime().flValue[0];
+					// cred: jon
+					const auto nTickMinFx = nTickCount - static_cast<int>(std::floor(cycleTime * 64)) - 1;
+
+					for (auto i = 0; i < numcmds; i++) {
+						const auto pUserCmd = &cmds[i].cmd;
+						for (auto j = 0; j < pUserCmd->input_history_size(); j++)
+						{
+							const auto history = pUserCmd->mutable_input_history(j);
+
+							if (history->player_tick_count() >= nTickMinFx) continue;
+
+							// log this stuff, look @ viewangles when someone is subtick strafing. valve are so fucking retarded
+							if (history->player_tick_count() < nTickMinFx) {
+								//	std::cout << "history: " << history->player_tick_count() << ",nTickMinFx : " << nTickMinFx << std::endl;
+								history->set_player_tick_count(nTickMinFx);
+
+							}
+						}
+					}
+					break;
+				}
+			}
+		}
+	}
 
 	VPROF_SCOPE_END();
 

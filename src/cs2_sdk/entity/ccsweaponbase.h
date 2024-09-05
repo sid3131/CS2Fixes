@@ -20,6 +20,7 @@
 #pragma once
 
 #include "cbaseentity.h"
+#include "cbaseentity.h"
 
 enum gear_slot_t : uint32_t
 {
@@ -74,6 +75,17 @@ public:
 	SCHEMA_FIELD(int, m_iMaxClip1)
 };
 
+class CFiringModeFloat
+{
+public:
+	float flValue[2];
+
+	float* GetValues() {
+		return flValue;
+	}
+};
+
+
 class CCSWeaponBaseVData : public CBasePlayerWeaponVData
 {
 public:
@@ -81,7 +93,9 @@ public:
 
 	SCHEMA_FIELD(gear_slot_t, m_GearSlot)
 	SCHEMA_FIELD(int, m_nPrice)
+	SCHEMA_FIELD(CFiringModeFloat, m_flCycleTime)
 	SCHEMA_FIELD(int, m_nPrimaryReserveAmmoMax);
+
 };
 
 class CBasePlayerWeapon : public CEconEntity
