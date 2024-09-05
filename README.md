@@ -1,3 +1,8 @@
+Cheat related CVars:
+s_subtick (default 0): disables subtick strafe when true
+s_dt (default 0): disables doubletap when true
+
+
 # CS2Fixes
 
 CS2Fixes is a Metamod plugin with fixes and features aimed but not limited to zombie escape. This project also serves as a good example and help for source2mod and other developers.
